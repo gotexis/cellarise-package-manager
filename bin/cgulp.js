@@ -6,6 +6,42 @@ var context;
 var failed;
 var task;
 
+// Monkey-patch require for case-sensitive linux FS
+const Module = require('module');
+const originalRequire = Module.prototype.require;
+
+Module.prototype.require = function (request) {
+  try {
+    // Try the original require first
+    return originalRequire.call(this, request);
+  } catch (err) {
+    // Only attempt rescue if the request looks like a .json file
+    if (!request.toLowerCase().endsWith('.json')) {
+      throw err;
+    }
+
+    // Try to resolve the actual filename
+    const baseDir = path.dirname(Module._resolveFilename(request, this));
+    const targetName = path.basename(request);
+
+    let match;
+
+    try {
+      const files = fs.readdirSync(baseDir);
+      match = files.find(f => f.toLowerCase() === targetName.toLowerCase());
+    } catch (e) {
+      throw err; // keep the original error
+    }
+
+    if (!match) {
+      throw err;
+    }
+
+    const correctedPath = path.join(baseDir, match);
+    return originalRequire.call(this, correctedPath);
+  }
+};
+
 const argv = require("minimist")(process.argv.slice(2));
 const gulp = require("gulp");
 const path = require("path");
